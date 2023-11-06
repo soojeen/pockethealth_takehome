@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/png"
 	"io"
@@ -17,27 +18,6 @@ import (
 	"github.com/suyashkumar/dicom"
 	"github.com/suyashkumar/dicom/pkg/tag"
 )
-
-type DicomFile struct {
-	ID      string        `json:"id"`
-	Dataset dicom.Dataset `json:"dataset"`
-}
-
-/*
-# Takehome Notes
-
-https://www.dicomlibrary.com/dicom/dicom-tags/
-https://dicomiseasy.blogspot.com/2011/10/introduction-to-dicom-chapter-1.html
-https://www.digitalocean.com/community/tutorials/how-to-make-an-http-server-in-go#prerequisites
-https://github.com/suyashkumar/dicom
-
-// TODO: mis-read requirements as all one endpoint. split out each functionality to separate endpoints DUH
-
-- POST /dicom
-  - convert to PNG
-  - if client include query param (DICOM Tag), return the header attribute as JSON
-- GET /dicom/:id
-*/
 
 func main() {
 	r := chi.NewRouter()
@@ -78,8 +58,10 @@ func dicomFileCtx(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dicomFileID := chi.URLParam(r, "dicomFileID")
 		dataset, _ := dicom.ParseFile(filepath.Join("images", dicomFileID), nil)
-		ctx := context.WithValue(r.Context(), "dicomId", dicomFileID)
-		ctx = context.WithValue(r.Context(), "dicomDataset", dataset)
+
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "dicomID", dicomFileID)
+		ctx = context.WithValue(ctx, "dicomDataset", dataset)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -114,11 +96,10 @@ func getDicomResource(w http.ResponseWriter, r *http.Request) {
 
 func getDicomFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id, _ := ctx.Value("dicomId").(string)
+	id, _ := ctx.Value("dicomID").(string)
 	path := filepath.Join("images", id)
 
-	// TODO: return dicom file
-	fmt.Println(path)
+	http.ServeFile(w, r, path)
 }
 
 func convertDicomToPng(dataset dicom.Dataset, id string) []string {
@@ -127,11 +108,17 @@ func convertDicomToPng(dataset dicom.Dataset, id string) []string {
 
 	filePaths := make([]string, len(pixelDataInfo.Frames))
 	for i, fr := range pixelDataInfo.Frames {
-		img, _ := fr.GetImage()
 		path := filepath.Join("images", fmt.Sprintf("%s_%d.png", id, i))
-		f, _ := os.Create(path)
-		_ = png.Encode(f, img)
-		_ = f.Close()
+
+		_, statErr := os.Stat(path)
+		// hacky check for file already existing
+		if errors.Is(statErr, os.ErrNotExist) {
+			img, _ := fr.GetImage()
+			f, _ := os.Create(path)
+			_ = png.Encode(f, img)
+			_ = f.Close()
+		}
+
 		filePaths[i] = path
 	}
 
@@ -140,13 +127,13 @@ func convertDicomToPng(dataset dicom.Dataset, id string) []string {
 
 func getDicomImage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	id, _ := ctx.Value("dicomId").(string)
+	id, _ := ctx.Value("dicomID").(string)
 	dataset, _ := ctx.Value("dicomDataset").(dicom.Dataset)
 
 	filePaths := convertDicomToPng(dataset, id)
 
 	if len(filePaths) == 1 {
-		// TODO: return image file
+		http.ServeFile(w, r, filePaths[0])
 	} else {
 		// TODO: dicom library suggests each dicom file could contain a range of image frames
 		// but in practice, only seeing one image. implement this when we need to return zip of multiple files
