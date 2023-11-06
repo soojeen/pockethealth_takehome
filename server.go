@@ -49,7 +49,7 @@ func createDicomResource(w http.ResponseWriter, r *http.Request) {
 	io.Copy(file, uploadedFile)
 
 	// NOTE: considered returning full dataset as resource, but it is very large.
-	// client can get any further data based on the Location header url
+	// client can get any further data with Location resource url
 	w.Header().Set("Location", filepath.Join("dicom-files", id.String()))
 	w.WriteHeader(http.StatusCreated)
 }
@@ -105,8 +105,8 @@ func getDicomFile(w http.ResponseWriter, r *http.Request) {
 func convertDicomToPng(dataset dicom.Dataset, id string) []string {
 	pixelDataElement, _ := dataset.FindElementByTag(tag.PixelData)
 	pixelDataInfo := dicom.MustGetPixelDataInfo(pixelDataElement.Value)
-
 	filePaths := make([]string, len(pixelDataInfo.Frames))
+
 	for i, fr := range pixelDataInfo.Frames {
 		path := filepath.Join("images", fmt.Sprintf("%s_%d.png", id, i))
 
