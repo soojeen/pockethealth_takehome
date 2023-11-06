@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"image/png"
 	"io"
@@ -33,7 +34,6 @@ https://github.com/suyashkumar/dicom
 // TODO: mis-read requirements as all one endpoint. split out each functionality to separate endpoints DUH
 
 - POST /dicom
-  - extract header attributes
   - convert to PNG
   - if client include query param (DICOM Tag), return the header attribute as JSON
 - GET /dicom/:id
@@ -97,20 +97,19 @@ func parseDicomTagParams(params string) tag.Tag {
 
 func getDicomResource(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	value, _ := ctx.Value("dicomFile").(string)
+	dataset, _ := ctx.Value("dicomDataset").(dicom.Dataset)
 
-	// TODO: implement query param here
-	// params := r.URL.Query().Get("tag")
-	// tag := parseDicomTagParams(params)
-	// dataset, _ := dicom.ParseFile(filepath.Join("images", id.String()), nil)
-	// element, _ := dataset.FindElementByTag(tag)
+	params := r.URL.Query().Get("tag")
 
-	// TODO: return JSON dicom dataset
-	// json.NewEncoder(w).Encode(DicomFile{id, dataset})
-	// jData, _ := json.Marshal(DicomFile{id.String(), dataset})
-	// w.Write(jData)
-	fmt.Println("get handler", value)
-	w.Write([]byte("TODO get file"))
+	if params != "" {
+		tag := parseDicomTagParams(params)
+		element, _ := dataset.FindElementByTag(tag)
+		jData, _ := json.Marshal(element)
+		w.Write(jData)
+	} else {
+		jData, _ := json.Marshal(dataset)
+		w.Write(jData)
+	}
 }
 
 func getDicomFile(w http.ResponseWriter, r *http.Request) {
