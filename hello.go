@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"os"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/suyashkumar/dicom"
+	"github.com/suyashkumar/dicom/pkg/tag"
 )
 
 /*
@@ -40,8 +43,6 @@ func main() {
 		})
 	})
 
-	// fmt.Println("Hello, World!")
-
 	http.ListenAndServe(":3001", r)
 }
 
@@ -51,14 +52,34 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 
 func createDicomFile(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New()
-	fmt.Println(id)
-	data, error := os.Create(filepath.Join("images", id.String()))
-	fmt.Println(data, error)
-	file, _, fileError := r.FormFile("file")
-	fmt.Println(file, fileError)
-	io.Copy(data, file)
-	fmt.Println("DONE")
+
+	path := filepath.Join("images", id.String())
+	file, _ := os.Create(path)
+	uploadedFile, _, _ := r.FormFile("file")
+	io.Copy(file, uploadedFile)
+
+	convertDicomToPng(path)
+
+	// TODO: parse query param
+	// TODO: return value
 	w.Write([]byte("TODO create file"))
+}
+
+// TODO: prevent reading from disk
+// tried but failed to parse the form upload file and the tempfile in createDicomFile
+func convertDicomToPng(path string) {
+	dataset, _ := dicom.ParseFile(path, nil)
+	pixelDataElement, _ := dataset.FindElementByTag(tag.PixelData)
+	pixelDataInfo := dicom.MustGetPixelDataInfo(pixelDataElement.Value)
+	fmt.Println(pixelDataInfo)
+	for i, fr := range pixelDataInfo.Frames {
+		img, _ := fr.GetImage()
+		// TODO: same name, same directory as dicom
+		f, _ := os.Create(fmt.Sprintf("image_%d.jpg", i))
+		// TODO: convert to png
+		_ = jpeg.Encode(f, img, &jpeg.Options{Quality: 100})
+		_ = f.Close()
+	}
 }
 
 func dicomFileCtx(next http.Handler) http.Handler {
@@ -76,6 +97,6 @@ func getDicomFile(w http.ResponseWriter, r *http.Request) {
 	value, _ := ctx.Value("dicomFile").(string)
 
 	// TODO: what to return??
-	fmt.Println("Hello, World!", value)
+	fmt.Println("get handler", value)
 	w.Write([]byte("TODO get file"))
 }
