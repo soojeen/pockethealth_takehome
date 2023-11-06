@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"image/jpeg"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
@@ -58,7 +58,7 @@ func createDicomFile(w http.ResponseWriter, r *http.Request) {
 	uploadedFile, _, _ := r.FormFile("file")
 	io.Copy(file, uploadedFile)
 
-	convertDicomToPng(path)
+	convertDicomToPng(id.String())
 
 	// TODO: parse query param
 	// TODO: return value
@@ -67,17 +67,15 @@ func createDicomFile(w http.ResponseWriter, r *http.Request) {
 
 // TODO: prevent reading from disk
 // tried but failed to parse the form upload file and the tempfile in createDicomFile
-func convertDicomToPng(path string) {
-	dataset, _ := dicom.ParseFile(path, nil)
+func convertDicomToPng(id string) {
+	dataset, _ := dicom.ParseFile(filepath.Join("images", id), nil)
 	pixelDataElement, _ := dataset.FindElementByTag(tag.PixelData)
 	pixelDataInfo := dicom.MustGetPixelDataInfo(pixelDataElement.Value)
-	fmt.Println(pixelDataInfo)
+
 	for i, fr := range pixelDataInfo.Frames {
 		img, _ := fr.GetImage()
-		// TODO: same name, same directory as dicom
-		f, _ := os.Create(fmt.Sprintf("image_%d.jpg", i))
-		// TODO: convert to png
-		_ = jpeg.Encode(f, img, &jpeg.Options{Quality: 100})
+		f, _ := os.Create(filepath.Join("images", fmt.Sprintf("%s_%d.png", id, i)))
+		_ = png.Encode(f, img)
 		_ = f.Close()
 	}
 }
