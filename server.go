@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -58,11 +60,26 @@ func createDicomFile(w http.ResponseWriter, r *http.Request) {
 	uploadedFile, _, _ := r.FormFile("file")
 	io.Copy(file, uploadedFile)
 
+	params := r.URL.Query().Get("tag")
+	tag := parseDicomTagParams(params)
+	dataset, _ := dicom.ParseFile(filepath.Join("images", id.String()), nil)
+	element, _ := dataset.FindElementByTag(tag)
+
 	convertDicomToPng(id.String())
 
-	// TODO: parse query param
 	// TODO: return value
 	w.Write([]byte("TODO create file"))
+}
+
+func parseDicomTagParams(params string) tag.Tag {
+	params = strings.TrimPrefix(params, "(")
+	params = strings.TrimSuffix(params, ")")
+	tagParts := strings.Split(params, ",")
+
+	group, _ := strconv.ParseUint(tagParts[0], 10, 16)
+	element, _ := strconv.ParseUint(tagParts[1], 10, 16)
+
+	return tag.Tag{Group: uint16(group), Element: uint16(element)}
 }
 
 // TODO: prevent reading from disk
