@@ -25,6 +25,8 @@ https://dicomiseasy.blogspot.com/2011/10/introduction-to-dicom-chapter-1.html
 https://www.digitalocean.com/community/tutorials/how-to-make-an-http-server-in-go#prerequisites
 https://github.com/suyashkumar/dicom
 
+// TODO: mis-read requirements as all one endpoint. split out each functionality to separate endpoints DUH
+
 - POST /dicom
   - extract header attributes
   - convert to PNG
