@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -51,7 +52,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 func createDicomFile(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New()
 	fmt.Println(id)
-	data, error := os.Create(id.String())
+	data, error := os.Create(filepath.Join("images", id.String()))
 	fmt.Println(data, error)
 	file, _, fileError := r.FormFile("file")
 	fmt.Println(file, fileError)
