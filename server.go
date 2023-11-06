@@ -40,10 +40,12 @@ func main() {
 	r := chi.NewRouter()
 	r.Get("/", rootHandler)
 	r.Route("/dicom-files", func(r chi.Router) {
-		r.Post("/", createDicomFile)
+		r.Post("/", createDicomResource)
 		r.Route("/{dicomFileID}", func(r chi.Router) {
 			r.Use(dicomFileCtx)
-			r.Get("/", getDicomFile)
+			r.Get("/", getDicomResource)
+			// r.Get("/file", getDicomFile)
+			// r.Get("/image", getDicomImage)
 		})
 	})
 
@@ -54,7 +56,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("welcome"))
 }
 
-func createDicomFile(w http.ResponseWriter, r *http.Request) {
+func createDicomResource(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New()
 
 	path := filepath.Join("images", id.String())
@@ -109,11 +111,13 @@ func dicomFileCtx(next http.Handler) http.Handler {
 	})
 }
 
-func getDicomFile(w http.ResponseWriter, r *http.Request) {
+func getDicomResource(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	value, _ := ctx.Value("dicomFile").(string)
 
-	// TODO: what to return??
+	// TODO: implement query param here
+
+	// TODO: return JSON dicom dataset
 	fmt.Println("get handler", value)
 	w.Write([]byte("TODO get file"))
 }
