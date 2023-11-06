@@ -17,6 +17,11 @@ import (
 	"github.com/suyashkumar/dicom/pkg/tag"
 )
 
+type DicomFile struct {
+	ID      string        `json:"id"`
+	Dataset dicom.Dataset `json:"dataset"`
+}
+
 /*
 # Takehome Notes
 
@@ -30,22 +35,21 @@ https://github.com/suyashkumar/dicom
 - POST /dicom
   - extract header attributes
   - convert to PNG
-  - return location header with resource URL https://stackoverflow.com/questions/1829875/is-it-ok-by-rest-to-return-content-after-post
   - if client include query param (DICOM Tag), return the header attribute as JSON
 - GET /dicom/:id
-	- use query params to determine type of return? imageType='png', default original dicom?
 */
 
 func main() {
 	r := chi.NewRouter()
+
 	r.Get("/", rootHandler)
 	r.Route("/dicom-files", func(r chi.Router) {
 		r.Post("/", createDicomResource)
 		r.Route("/{dicomFileID}", func(r chi.Router) {
 			r.Use(dicomFileCtx)
 			r.Get("/", getDicomResource)
-			// r.Get("/file", getDicomFile)
-			// r.Get("/image", getDicomImage)
+			r.Get("/file", getDicomFile)
+			r.Get("/image", getDicomImage)
 		})
 	})
 
@@ -53,7 +57,7 @@ func main() {
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("welcome"))
+	w.Write([]byte("welcome to the Dicom file server"))
 }
 
 func createDicomResource(w http.ResponseWriter, r *http.Request) {
@@ -64,15 +68,20 @@ func createDicomResource(w http.ResponseWriter, r *http.Request) {
 	uploadedFile, _, _ := r.FormFile("file")
 	io.Copy(file, uploadedFile)
 
-	params := r.URL.Query().Get("tag")
-	tag := parseDicomTagParams(params)
-	dataset, _ := dicom.ParseFile(filepath.Join("images", id.String()), nil)
-	element, _ := dataset.FindElementByTag(tag)
+	// NOTE: considered returning full dataset as resource, but it is very large.
+	// client can get any further data based on the Location header url
+	w.Header().Set("Location", filepath.Join("dicom-files", id.String()))
+	w.WriteHeader(http.StatusCreated)
+}
 
-	convertDicomToPng(id.String())
-
-	// TODO: return value
-	w.Write([]byte("TODO create file"))
+func dicomFileCtx(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dicomFileID := chi.URLParam(r, "dicomFileID")
+		dataset, _ := dicom.ParseFile(filepath.Join("images", dicomFileID), nil)
+		ctx := context.WithValue(r.Context(), "dicomId", dicomFileID)
+		ctx = context.WithValue(r.Context(), "dicomDataset", dataset)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func parseDicomTagParams(params string) tag.Tag {
@@ -86,38 +95,61 @@ func parseDicomTagParams(params string) tag.Tag {
 	return tag.Tag{Group: uint16(group), Element: uint16(element)}
 }
 
-// TODO: prevent reading from disk
-// tried but failed to parse the form upload file and the tempfile in createDicomFile
-func convertDicomToPng(id string) {
-	dataset, _ := dicom.ParseFile(filepath.Join("images", id), nil)
-	pixelDataElement, _ := dataset.FindElementByTag(tag.PixelData)
-	pixelDataInfo := dicom.MustGetPixelDataInfo(pixelDataElement.Value)
-
-	for i, fr := range pixelDataInfo.Frames {
-		img, _ := fr.GetImage()
-		f, _ := os.Create(filepath.Join("images", fmt.Sprintf("%s_%d.png", id, i)))
-		_ = png.Encode(f, img)
-		_ = f.Close()
-	}
-}
-
-func dicomFileCtx(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		dicomFileID := chi.URLParam(r, "dicomFileID")
-		// TODO: more details
-		dicomFile := dicomFileID
-		ctx := context.WithValue(r.Context(), "dicomFile", dicomFile)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
 func getDicomResource(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	value, _ := ctx.Value("dicomFile").(string)
 
 	// TODO: implement query param here
+	// params := r.URL.Query().Get("tag")
+	// tag := parseDicomTagParams(params)
+	// dataset, _ := dicom.ParseFile(filepath.Join("images", id.String()), nil)
+	// element, _ := dataset.FindElementByTag(tag)
 
 	// TODO: return JSON dicom dataset
+	// json.NewEncoder(w).Encode(DicomFile{id, dataset})
+	// jData, _ := json.Marshal(DicomFile{id.String(), dataset})
+	// w.Write(jData)
 	fmt.Println("get handler", value)
 	w.Write([]byte("TODO get file"))
+}
+
+func getDicomFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, _ := ctx.Value("dicomId").(string)
+	path := filepath.Join("images", id)
+
+	// TODO: return dicom file
+	fmt.Println(path)
+}
+
+func convertDicomToPng(dataset dicom.Dataset, id string) []string {
+	pixelDataElement, _ := dataset.FindElementByTag(tag.PixelData)
+	pixelDataInfo := dicom.MustGetPixelDataInfo(pixelDataElement.Value)
+
+	filePaths := make([]string, len(pixelDataInfo.Frames))
+	for i, fr := range pixelDataInfo.Frames {
+		img, _ := fr.GetImage()
+		path := filepath.Join("images", fmt.Sprintf("%s_%d.png", id, i))
+		f, _ := os.Create(path)
+		_ = png.Encode(f, img)
+		_ = f.Close()
+		filePaths[i] = path
+	}
+
+	return filePaths
+}
+
+func getDicomImage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, _ := ctx.Value("dicomId").(string)
+	dataset, _ := ctx.Value("dicomDataset").(dicom.Dataset)
+
+	filePaths := convertDicomToPng(dataset, id)
+
+	if len(filePaths) == 1 {
+		// TODO: return image file
+	} else {
+		// TODO: dicom library suggests each dicom file could contain a range of image frames
+		// but in practice, only seeing one image. implement this when we need to return zip of multiple files
+	}
 }
