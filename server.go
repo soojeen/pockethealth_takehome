@@ -43,7 +43,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 func createDicomResource(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New()
 
-	path := filepath.Join("images", id.String())
+	path := filepath.Join("files", id.String())
 	file, _ := os.Create(path)
 	uploadedFile, _, _ := r.FormFile("file")
 	io.Copy(file, uploadedFile)
@@ -57,7 +57,7 @@ func createDicomResource(w http.ResponseWriter, r *http.Request) {
 func dicomFileCtx(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dicomFileID := chi.URLParam(r, "dicomFileID")
-		dataset, _ := dicom.ParseFile(filepath.Join("images", dicomFileID), nil)
+		dataset, _ := dicom.ParseFile(filepath.Join("files", dicomFileID), nil)
 
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, "dicomID", dicomFileID)
@@ -66,6 +66,7 @@ func dicomFileCtx(next http.Handler) http.Handler {
 	})
 }
 
+// TODO: malformed params should return helpful error message
 func parseDicomTagParams(params string) tag.Tag {
 	params = strings.TrimPrefix(params, "(")
 	params = strings.TrimSuffix(params, ")")
@@ -81,10 +82,10 @@ func getDicomResource(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	dataset, _ := ctx.Value("dicomDataset").(dicom.Dataset)
 
-	params := r.URL.Query().Get("tag")
+	searchParams := r.URL.Query().Get("tag")
 
-	if params != "" {
-		tag := parseDicomTagParams(params)
+	if searchParams != "" {
+		tag := parseDicomTagParams(searchParams)
 		element, _ := dataset.FindElementByTag(tag)
 		jData, _ := json.Marshal(element)
 		w.Write(jData)
@@ -97,7 +98,7 @@ func getDicomResource(w http.ResponseWriter, r *http.Request) {
 func getDicomFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, _ := ctx.Value("dicomID").(string)
-	path := filepath.Join("images", id)
+	path := filepath.Join("files", id)
 
 	http.ServeFile(w, r, path)
 }
@@ -108,7 +109,7 @@ func convertDicomToPng(dataset dicom.Dataset, id string) []string {
 	filePaths := make([]string, len(pixelDataInfo.Frames))
 
 	for i, fr := range pixelDataInfo.Frames {
-		path := filepath.Join("images", fmt.Sprintf("%s_%d.png", id, i))
+		path := filepath.Join("files", fmt.Sprintf("%s_%d.png", id, i))
 
 		_, statErr := os.Stat(path)
 		// hacky check for file already existing
